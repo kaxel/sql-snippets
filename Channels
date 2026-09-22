@@ -1,0 +1,177 @@
+select "lay1".month_day, 
+country, channel,
+SUM(CASE WHEN year = '20' THEN reg ELSE NULL END) AS "2020",
+SUM(CASE WHEN year = '21' THEN reg ELSE NULL END) AS "2021"
+from
+(SELECT concat_ws(' - ', lpad(month::text, 2, '0'), lpad(day::text, 2, '0')) AS month_day, reg, year, country, channel 
+    from public.v2_channels
+    cross join public.v2_dates
+where (date::date >= v2_dates.reg_target_date::date - '30 day'::interval AND date::date <= v2_dates.reg_target_date::date) 
+    or (date::date > (v2_dates.reg_target_date::date - '396 day'::interval) AND (date::date <= v2_dates.reg_target_date::date - '1 year'::interval))
+) as lay1
+
+group by month_day, country, channel
+order by month_day
+
+-- Section 2
+
+select "lay1".month_day, 
+SUM(CASE WHEN year = '20' THEN conversions ELSE NULL END) AS "2020",
+SUM(CASE WHEN year = '21' THEN conversions ELSE NULL END) AS "2021",
+country, channel
+from
+(SELECT concat_ws(' - ', lpad(month::text, 2, '0'), lpad(day::text, 2, '0')) AS month_day, conversions, year, country, channel 
+    from public.v2_channels
+    cross join public.v2_dates
+where (date::date >= v2_dates.sub_target_date::date - '30 day'::interval AND date::date <= v2_dates.sub_target_date::date) 
+    or (date::date > (v2_dates.sub_target_date::date - '396 day'::interval) AND (date::date <= v2_dates.sub_target_date::date - '1 year'::interval))
+) as lay1
+where conversions is not NULL
+group by month_day, country, channel
+order by month_day
+
+
+-- Section 3
+
+select 'Regs' as type, max(lay2.reg20) as "2020",  max(lay2.reg21) as "2021",  max(lay2.reg21) -  max(lay2.reg20) as "count Δ", 
+(( max(reg21)::float/ max(reg20))-1) as "percent Δ",
+country, channel, 1 as orderby
+from
+
+
+(select max(regs20) as reg20, max(regs21) as reg21,
+max(conv20) as con20, max(conv21) as con21, 
+country, channel
+from
+(SELECT
+  CASE year WHEN 20 then sum(reg) else null end AS regs20,
+  CASE year WHEN 21 then sum(reg) else null end AS regs21,
+  CASE year WHEN 20 then sum(conversions) else null end AS conv20,
+  CASE year WHEN 21 then sum(conversions) else null end AS conv21,
+  year,
+  country,
+  channel
+FROM public.v2_channels
+cross join public.v2_dates
+where (date::date >= v2_dates.reg_target_date::date - '30 day'::interval AND date::date <= v2_dates.reg_target_date::date) 
+    or (date::date > (v2_dates.reg_target_date::date - '396 day'::interval) AND (date::date <= v2_dates.reg_target_date::date - '1 year'::interval))
+group by year, country, channel
+order by country, year) as lay1
+group by country, channel) as lay2
+group by country, channel
+
+
+UNION
+
+
+
+select 'Conversions' as type, max(lay2.con20) as "2020",  max(lay2.con21) as "2021",  max(lay2.con21) -  max(lay2.con20) as "count Δ", 
+(( max(lay2.con21)::float/ max(lay2.con20))-1) as "percent Δ",
+country, channel, 2 as orderby
+from
+
+
+(select max(regs20) as reg20, max(regs21) as reg21,
+max(conv20) as con20, max(conv21) as con21, 
+country, channel
+from
+(SELECT
+  CASE year WHEN 20 then sum(reg) else null end AS regs20,
+  CASE year WHEN 21 then sum(reg) else null end AS regs21,
+  CASE year WHEN 20 then sum(conversions) else null end AS conv20,
+  CASE year WHEN 21 then sum(conversions) else null end AS conv21,
+  year,
+  country,
+  channel
+FROM public.v2_channels
+cross join public.v2_dates
+where (date::date >= v2_dates.sub_target_date::date - '30 day'::interval AND date::date <= v2_dates.sub_target_date::date) 
+    or (date::date > (v2_dates.sub_target_date::date - '396 day'::interval) AND (date::date <= v2_dates.sub_target_date::date - '1 year'::interval))
+group by year, country, channel
+order by country, year) as lay1
+group by country, channel) as lay2
+group by country, channel
+order by orderby
+
+
+-- Section 4
+
+select '2020' as year, max(con20)::float/max(reg20) as conv_rate,
+country, channel
+from
+
+(select max(regs20) as reg20, max(regs21) as reg21,
+max(conv20) as con20, max(conv21) as con21, 
+country, channel
+from
+(SELECT
+  CASE year WHEN 20 then sum(reg) else null end AS regs20,
+  CASE year WHEN 21 then sum(reg) else null end AS regs21,
+  CASE year WHEN 20 then sum(conversions) else null end AS conv20,
+  CASE year WHEN 21 then sum(conversions) else null end AS conv21,
+  year,
+  country,
+  channel
+FROM public.v2_channels
+cross join public.v2_dates
+where (date::date >= v2_dates.sub_target_date::date - '30 day'::interval AND date::date <= v2_dates.sub_target_date::date) 
+    or (date::date > (v2_dates.sub_target_date::date - '396 day'::interval) AND (date::date <= v2_dates.sub_target_date::date - '1 year'::interval))
+group by year, country, channel
+order by country, year) as lay1
+group by country, channel) as lay2
+group by country, channel
+
+UNION
+
+select '2021' as year, max(con21)::float/max(reg21) as conv_rate,
+country, channel
+from
+
+(select max(regs20) as reg20, max(regs21) as reg21,
+max(conv20) as con20, max(conv21) as con21, 
+country, channel
+from
+(SELECT
+  CASE year WHEN 20 then sum(reg) else null end AS regs20,
+  CASE year WHEN 21 then sum(reg) else null end AS regs21,
+  CASE year WHEN 20 then sum(conversions) else null end AS conv20,
+  CASE year WHEN 21 then sum(conversions) else null end AS conv21,
+  year,
+  country,
+  channel
+FROM public.v2_channels
+cross join public.v2_dates
+where (date::date >= v2_dates.sub_target_date::date - '30 day'::interval AND date::date <= v2_dates.sub_target_date::date) 
+    or (date::date > (v2_dates.sub_target_date::date - '396 day'::interval) AND (date::date <= v2_dates.sub_target_date::date - '1 year'::interval))
+group by year, country, channel
+order by country, year) as lay1
+group by country, channel) as lay2
+group by country, channel
+
+UNION
+
+select 'Δ' as year, ( max(con21)::float/max(reg21) - max(con20)::float/max(reg20) ) as conv_rate,
+country, channel
+from
+
+(select max(regs20) as reg20, max(regs21) as reg21,
+max(conv20) as con20, max(conv21) as con21, 
+country, channel
+from
+(SELECT
+  CASE year WHEN 20 then sum(reg) else null end AS regs20,
+  CASE year WHEN 21 then sum(reg) else null end AS regs21,
+  CASE year WHEN 20 then sum(conversions) else null end AS conv20,
+  CASE year WHEN 21 then sum(conversions) else null end AS conv21,
+  year,
+  country,
+  channel
+FROM public.v2_channels
+cross join public.v2_dates
+where (date::date >= v2_dates.sub_target_date::date - '30 day'::interval AND date::date <= v2_dates.sub_target_date::date) 
+    or (date::date > (v2_dates.sub_target_date::date - '396 day'::interval) AND (date::date <= v2_dates.sub_target_date::date - '1 year'::interval))
+group by year, country, channel
+order by country, year) as lay1
+group by country, channel) as lay2
+group by country, channel
+order by year
